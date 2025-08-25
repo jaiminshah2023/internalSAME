@@ -608,33 +608,25 @@ with tab1:
 
 with tab2:
     st.markdown("### 👨‍🎓 Individual Student Analysis")
-    
     # Student selector
     if "Student" in df_main.columns:
         # Filter out non-student entries like "Category Distribution" and other system entries
         student_list = []
         for student in df_main["Student"].dropna().unique():
             student_str = str(student).strip()
-            # Skip entries that look like headers, categories, or system entries
             if (student_str and 
                 student_str not in ["Category Distribution", "CATEGORY DISTRIBUTION", "category distribution"] and
                 not student_str.lower().startswith("category") and
                 not student_str.lower().startswith("total") and
                 not student_str.lower().startswith("average") and
-                len(student_str) > 2):  # Ensure it's a meaningful name
+                len(student_str) > 2):
                 student_list.append(student_str)
-        
         student_list = sorted(student_list)
         selected_student = st.selectbox("Select a Student", options=student_list)
-        
         if selected_student:
-            # Filter data for selected student
             student_data = df_main[df_main["Student"] == selected_student]
-            
             if not student_data.empty:
-                # Student info section
                 col1, col2 = st.columns(2)
-                
                 with col1:
                     st.markdown("#### 📊 Student Information")
                     if "School" in student_data.columns:
@@ -645,7 +637,6 @@ with tab2:
                         st.write(f"**Team:** {student_data['Team Name'].iloc[0] if not pd.isna(student_data['Team Name'].iloc[0]) else 'N/A'}")
                     if "Home County" in student_data.columns:
                         st.write(f"**Home County:** {student_data['Home County'].iloc[0] if not pd.isna(student_data['Home County'].iloc[0]) else 'N/A'}")
-                
                 with col2:
                     st.markdown("#### 🎯 Performance Metrics")
                     if "Mean Grade" in student_data.columns:
@@ -654,16 +645,22 @@ with tab2:
                         st.write(f"**Overall Percentage:** {student_data['M%'].iloc[0] if not pd.isna(student_data['M%'].iloc[0]) else 'N/A'}%")
                     if "Remark" in student_data.columns:
                         st.write(f"**Remark:** {student_data['Remark'].iloc[0] if not pd.isna(student_data['Remark'].iloc[0]) else 'N/A'}")
-                
-                # Subject scores visualization
+                # Period filter for subject performance
+                available_periods = sorted([str(x) for x in student_data["Period"].dropna().unique()]) if "Period" in student_data.columns else []
+                selected_period = None
+                if available_periods:
+                    selected_period = st.selectbox("Select Period for Subject Performance", options=available_periods)
                 st.markdown("#### 📚 Subject Performance")
-                
-                # Get subject scores for the student
+                # Filter by selected period if available
+                if selected_period:
+                    period_data = student_data[student_data["Period"].astype(str) == selected_period]
+                else:
+                    period_data = student_data
                 subject_scores = []
                 subject_names = []
                 for subject in subject_columns:
-                    if subject in student_data.columns:
-                        score = student_data[subject].iloc[0]
+                    if subject in period_data.columns:
+                        score = period_data[subject].iloc[0]
                         if pd.notna(score) and str(score).strip() not in ["Not Appeared", ""]:
                             try:
                                 numeric_score = float(score)
@@ -671,28 +668,21 @@ with tab2:
                                 subject_names.append(subject)
                             except:
                                 pass
-                
                 if subject_scores and subject_names:
-                    # Bar chart of subject scores
                     fig_subjects = px.bar(
                         x=subject_names,
                         y=subject_scores,
-                        title=f"Subject Scores for {selected_student}",
+                        title=f"Subject Scores for {selected_student} ({selected_period if selected_period else 'All Periods'})",
                         labels={"x": "Subject", "y": "Score"},
                         color=subject_scores,
                         color_continuous_scale="viridis"
                     )
-                    
                     fig_subjects.update_traces(hovertemplate='<b>%{x}</b><br>Subject Score: %{y}<extra></extra>')
-                    fig_subjects.add_hline(y=60, line_dash="dash", line_color="red", 
-                                         annotation_text="Pass Mark (60%)")
+                    fig_subjects.add_hline(y=60, line_dash="dash", line_color="red", annotation_text="Pass Mark (60%)")
                     st.plotly_chart(fig_subjects, use_container_width=True)
-                    
-                    # Performance analysis
                     avg_score = np.mean(subject_scores)
                     subjects_below_60 = [name for name, score in zip(subject_names, subject_scores) if score < 60]
                     subjects_above_80 = [name for name, score in zip(subject_names, subject_scores) if score >= 80]
-                    
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Average Score", f"{avg_score:.1f}%")
@@ -700,22 +690,34 @@ with tab2:
                         st.metric("Subjects Below 60%", len(subjects_below_60))
                     with col3:
                         st.metric("Subjects Above 80%", len(subjects_above_80))
-                    
                     if subjects_below_60:
                         st.warning(f"**Subjects needing improvement:** {', '.join(subjects_below_60)}")
-                    
                     if subjects_above_80:
                         st.success(f"**Strong subjects:** {', '.join(subjects_above_80)}")
-                
                 # Show subjects with "Not Appeared" status only
                 not_appeared_subjects = []
                 for subject in subject_columns:
-                    if subject in student_data.columns:
-                        score = student_data[subject].iloc[0]
+                    if subject in period_data.columns:
+                        score = period_data[subject].iloc[0]
                         if pd.notna(score) and str(score).strip() == "Not Appeared":
                             not_appeared_subjects.append(subject)
                 if not_appeared_subjects:
                     st.info(f"**Subjects not appeared:** {', '.join(not_appeared_subjects)}")
+                # Progress Over Time trend line graph
+                if "Period" in student_data.columns:
+                    time_data = student_data.copy()
+                    time_data = time_data.dropna(subset=["Period", "M%"])
+                    if not time_data.empty:
+                        fig_trend = px.line(
+                            time_data,
+                            x="Period",
+                            y="M%",
+                            title=f"Progress Over Time for {selected_student}",
+                            markers=True
+                        )
+                        fig_trend.update_traces(line_color="#1f77b4", marker=dict(size=8))
+                        fig_trend.update_layout(xaxis_title="Period", yaxis_title="Overall Percentage (%)")
+                        st.plotly_chart(fig_trend, use_container_width=True)
 
 # ---- Dropouts Tab ----
 # with tab4:
