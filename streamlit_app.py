@@ -119,14 +119,14 @@ def load_data():
     try:
         # Get file IDs from secrets
         file_ids = st.secrets["google_drive_files"]
-        
+
         # Load team result files
         files_and_teams = [
             (file_ids["team_kathy"], "Team Kathy"),
             (file_ids["team_kelly"], "Team Kelly"),
             (file_ids["team_lissette"], "Team Lissette"),
         ]
-        
+
         dfs = []
         for file_id, team in files_and_teams:
             try:
@@ -134,7 +134,6 @@ def load_data():
                 if all_sheets:
                     for sheet_name, df in all_sheets.items():
                         df["Team Name"] = team
-                        
                         # Replace NA, N/A, and similar values with "Not Appeared" across all columns
                         df = df.replace({
                             'NA': 'Not Appeared',
@@ -151,13 +150,13 @@ def load_data():
                     st.warning(f"Could not load data for {team}")
             except Exception as e:
                 st.error(f"Error loading {team} data: {str(e)}")
-        
+
         if not dfs:
             st.error("No team data could be loaded.")
             st.stop()
-        
+
         df_main = pd.concat(dfs, ignore_index=True)
-        
+
         # Load High School Data Sheet (only if file ID is provided and not placeholder)
         high_school_file_id = file_ids.get("high_school_data", "")
         high_school_unique_students = None
@@ -184,9 +183,21 @@ def load_data():
                 st.warning("Could not load High School Data Sheet")
         else:
             st.info("High School Data Sheet not configured - using team data only")
-        # Return both main df and high school unique student count
-        return df_main, high_school_unique_students
-        
+
+
+        # Load Dropout Data from Google Drive
+        dropout_file_id = file_ids.get("dropout_data", "")
+        dropout_df = None
+        if dropout_file_id:
+            dropout_excel = load_excel_from_drive(service, dropout_file_id, "Dropout Data")
+            if dropout_excel:
+                # Use the first sheet
+                sheet_name = list(dropout_excel.keys())[0]
+                dropout_df = dropout_excel[sheet_name]
+
+        # Return all main dataframes
+        return df_main, high_school_unique_students, dropout_df
+
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         st.stop()
@@ -203,8 +214,11 @@ def get_logo_base64():
         return None
 
 # Load data and logo
+
 with st.spinner("Loading data from Google Drive..."):
-    df_main, high_school_unique_students = load_data()
+
+    df_main, high_school_unique_students, dropout_df = load_data()
+
 
 # Load logo from local file
 logo_base64 = get_logo_base64()
@@ -313,8 +327,8 @@ else:
     """, unsafe_allow_html=True)
 
 # ---- Tab Structure ----
-tab1, tab2, tab3 = st.tabs(["📊 Overall Analysis", "👨‍🎓 Student Analysis", "📋 Detailed Data"])
-# tab1, tab2, tab3, tab4 = st.tabs(["📊 Overall Analysis", "👨‍🎓 Student Analysis", "📋 Detailed Data", "🚪 Dropouts"])
+# tab1, tab2, tab3 = st.tabs(["📊 Overall Analysis", "👨‍🎓 Student Analysis", "📋 Detailed Data"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Overall Analysis", "👨‍🎓 Student Analysis", "📋 Detailed Data", "🚪 Dropouts"])
 
 with tab1:
     # ---- Layout: Main Content and Filters Side by Side ----
@@ -732,40 +746,53 @@ with tab2:
                 st.dataframe(detailed_df, use_container_width=True)
 
 # ---- Dropouts Tab ----
-# with tab4:
-#     st.markdown("### 🚪 Dropouts Tracking")
-#     dropout_file = "dropouts.csv"
-#     dropouts_df = None
-#     if os.path.exists(dropout_file):
-#         try:
-#             dropouts_df = pd.read_csv(dropout_file)
-#         except Exception as e:
-#             st.error(f"Error reading {dropout_file}: {str(e)}")
-#     if dropouts_df is not None and not dropouts_df.empty:
-#         st.dataframe(dropouts_df, use_container_width=True)
-#         csv_data = dropouts_df.to_csv(index=False)
-#         st.download_button(
-#             label="📥 Download Dropouts Data as CSV",
-#             data=csv_data,
-#             file_name=f"dropouts_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-#             mime="text/csv"
-#         )
-#     else:
-#         st.info("No dropout data found. Please add a 'dropouts.csv' file with columns: Student, Dropout Date, Reason.")
-#         # Show template/example
-#         template = pd.DataFrame({
-#             "Student": ["John Doe", "Jane Smith"],
-#             "Dropout Date": ["2025-03-15", "2025-05-10"],
-#             "Reason": ["Financial hardship", "Relocation"]
-#         })
-#         st.dataframe(template, use_container_width=True)
-#         template_csv = template.to_csv(index=False)
-#         st.download_button(
-#             label="📥 Download Dropouts Template CSV",
-#             data=template_csv,
-#             file_name="dropouts_template.csv",
-#             mime="text/csv"
-#         )
+with tab4:
+    st.markdown("### 🚪 Dropouts Tracking")
+    if dropout_df is not None and not dropout_df.empty:
+        df = dropout_df.copy()
+        # Try to fix columns if they are misaligned due to extra header rows
+        # Find the row where 'Student Name' appears and use it as header
+        header_row_idx = None
+        for idx, row in df.iterrows():
+            if 'Student Name' in row.values and 'Dropout Period' in row.values and 'Reason' in row.values:
+                header_row_idx = idx
+                break
+        if header_row_idx is not None:
+            df.columns = df.iloc[header_row_idx]
+            df = df.iloc[header_row_idx+1:]
+            df = df.reset_index(drop=True)
+        # Only keep the needed columns
+        needed_cols = ["Student Name", "Dropout Period", "Reason"]
+        df = df[[col for col in needed_cols if col in df.columns]]
+        # Remove rows where Student Name or Reason is empty or None
+        df = df[df["Student Name"].astype(str).str.strip() != ""]
+        df = df[df["Reason"].astype(str).str.strip() != ""]
+        # Format Dropout Period if needed (e.g., show as 'Aug-25')
+        if "Dropout Period" in df.columns:
+            df["Dropout Period"] = pd.to_datetime(df["Dropout Period"], errors='coerce').dt.strftime('%b-%y')
+        st.dataframe(df, use_container_width=True)
+        csv_data = df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Dropouts Data as CSV",
+            data=csv_data,
+            file_name=f"dropouts_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("No dropout data found or the file is empty.")
+        # Diagnostic info
+        file_ids = st.secrets["google_drive_files"]
+        dropout_file_id = file_ids.get("dropout_data", "")
+        st.text(f"Dropout file ID: {dropout_file_id}")
+        service = initialize_drive_service()
+        if dropout_file_id and service:
+            dropout_excel = load_excel_from_drive(service, dropout_file_id, "Dropout Data")
+            if dropout_excel:
+                st.text(f"Loaded sheets: {list(dropout_excel.keys())}")
+                sheet_name = list(dropout_excel.keys())[0]
+                df_diag = dropout_excel[sheet_name]
+                st.text(f"Sheet '{sheet_name}' shape: {df_diag.shape}")
+                st.text(f"Columns: {list(df_diag.columns)}")
 
 with tab3:
     st.markdown("### 📋 Detailed Student Data")
