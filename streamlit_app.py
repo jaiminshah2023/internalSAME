@@ -720,6 +720,7 @@ with tab2:
                         fig_trend.update_traces(line_color="#1f77b4", marker=dict(size=8))
                         fig_trend.update_layout(xaxis_title="Period", yaxis_title="Overall Percentage (%)")
                         st.plotly_chart(fig_trend, use_container_width=True)
+
                 # Detailed Records section
                 st.markdown("#### Detailed Records")
                 st.dataframe(student_data, use_container_width=True)
