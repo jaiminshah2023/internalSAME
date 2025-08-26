@@ -160,6 +160,7 @@ def load_data():
         
         # Load High School Data Sheet (only if file ID is provided and not placeholder)
         high_school_file_id = file_ids.get("high_school_data", "")
+        high_school_unique_students = None
         if high_school_file_id:
             high_school_data = load_excel_from_drive(service, high_school_file_id, "High School Data")
             if high_school_data:
@@ -177,13 +178,14 @@ def load_data():
                     'N.A.': 'Not Appeared',
                     'N/A/': 'Not Appeared'
                 })
+                high_school_unique_students = high_school_df["Student"].dropna().astype(str).str.strip().nunique()
                 df_main = df_main.merge(high_school_df, how="left", on="Student")
             else:
                 st.warning("Could not load High School Data Sheet")
         else:
             st.info("High School Data Sheet not configured - using team data only")
-        
-        return df_main
+        # Return both main df and high school unique student count
+        return df_main, high_school_unique_students
         
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
@@ -202,7 +204,7 @@ def get_logo_base64():
 
 # Load data and logo
 with st.spinner("Loading data from Google Drive..."):
-    df_main = load_data()
+    df_main, high_school_unique_students = load_data()
 
 # Load logo from local file
 logo_base64 = get_logo_base64()
@@ -434,9 +436,10 @@ with tab1:
         with main_cols_row1[0]:
             st.markdown('<div class="metric-header">Number of Students</div>', unsafe_allow_html=True)
             unique_students = filtered["Student"].nunique() if "Student" in filtered.columns else 0
+            hs_students = high_school_unique_students if high_school_unique_students is not None else "N/A"
             st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">{unique_students}</div>
+                    <div class="metric-value">{hs_students}</div>
                 </div>
             """, unsafe_allow_html=True)
 
