@@ -591,17 +591,19 @@ with tab1:
                 chart3.info("No subjects of concern (all averages >= 55%).")
 
         if "M%" in filtered.columns and "Student" in filtered.columns:
-            # Show overall performance distribution instead of top 5
-            fig4 = px.histogram(
-                filtered,
-                x="M%",
-                nbins=20,
+            # Restore original Top 5 Students by Overall Performance bar chart, but rename heading
+            top_students = filtered.sort_values("M%", ascending=False).drop_duplicates("Student").head(5)
+            fig4 = px.bar(
+                top_students,
+                x="Student",
+                y="M%",
                 title="Overall Performance Distribution",
-                color_discrete_sequence=["#2ca02c"]
+                color="M%",
+                color_continuous_scale="Greens"
             )
             fig4.update_layout(
-                xaxis_title="Overall Percentage (%)",
-                yaxis_title="Number of Students",
+                xaxis_title="Student",
+                yaxis_title="M%",
                 showlegend=False
             )
             chart4.plotly_chart(fig4, use_container_width=True)
@@ -718,6 +720,9 @@ with tab2:
                         fig_trend.update_traces(line_color="#1f77b4", marker=dict(size=8))
                         fig_trend.update_layout(xaxis_title="Period", yaxis_title="Overall Percentage (%)")
                         st.plotly_chart(fig_trend, use_container_width=True)
+                # Detailed Records section
+                st.markdown("#### Detailed Records")
+                st.dataframe(student_data, use_container_width=True)
 
 # ---- Dropouts Tab ----
 # with tab4:
