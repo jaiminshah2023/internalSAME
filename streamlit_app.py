@@ -184,6 +184,7 @@ def load_data():
         else:
             st.info("High School Data Sheet not configured - using team data only")
 
+
         # Load Dropout Data from Google Drive
         dropout_file_id = file_ids.get("dropout_data", "")
         dropout_df = None
@@ -215,7 +216,9 @@ def get_logo_base64():
 # Load data and logo
 
 with st.spinner("Loading data from Google Drive..."):
+
     df_main, high_school_unique_students, dropout_df = load_data()
+
 
 # Load logo from local file
 logo_base64 = get_logo_base64()
