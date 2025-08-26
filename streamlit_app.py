@@ -723,6 +723,7 @@ with tab2:
 
                 # Detailed Records section
                 st.markdown("#### Detailed Records")
+
                 # Drop columns starting with 'Unnamed'
                 detailed_df = student_data.loc[:, ~student_data.columns.str.contains('^Unnamed')]
                 st.dataframe(detailed_df, use_container_width=True)
